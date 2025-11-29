@@ -1,0 +1,25 @@
+{
+    "name": "sas4-license-mcp-server",
+    "version": "1.0.0",
+    "description": "MCP Server for managing SAS4 Radius Licenses",
+    "main": "sas4-license-mcp-server.js",
+    "type": "commonjs",
+    "scripts": {
+      "start": "node sas4-license-mcp-server.js"
+    },
+    "keywords": [
+      "mcp",
+      "sas4",
+      "radius",
+      "license",
+      "management"
+    ],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+      "@modelcontextprotocol/sdk": "^1.0.0",
+      "axios": "^1.6.0",
+      "crypto-js": "^4.2.0",
+      "express": "^4.18.2"
+    }
+  }
