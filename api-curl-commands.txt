@@ -1,0 +1,190 @@
+# SAS4 Client Area MCP Server - API Endpoints
+# Base URL: http://localhost:3000
+
+# ==========================================
+# 1. Health Check
+# ==========================================
+# @mcp
+# Endpoint: GET /health
+# Description: Check if the server is running and healthy
+# Method: GET
+# Authentication: None required
+# Request Parameters: None
+# Response Format: JSON
+# Response Fields:
+#   - status: "ok" if server is healthy
+#   - service: Service name
+#   - timestamp: Current server timestamp in ISO format
+# Use Case: Verify server availability before making other API calls
+# Example Response:
+#   {
+#     "status": "ok",
+#     "service": "SAS4 License Search Server",
+#     "timestamp": "2025-01-01T12:00:00.000Z"
+#   }
+curl -X GET "http://localhost:3000/health" \
+  -H "Content-Type: application/json"
+
+# ==========================================
+# 2. Search License
+# ==========================================
+# @mcp
+# Endpoint: POST /api/search-license
+# Description: Search for licenses by keyword (license ID, email, or EHWID/Hardware ID)
+# Method: POST
+# Authentication: None required (handled internally)
+# Request Parameters:
+#   - keyword (required, string): Can be:
+#     * License ID (numeric, e.g., "12")
+#     * Email address (e.g., "user@example.com")
+#     * EHWID/Hardware ID (format: XXXXX-XXXXX-XXXXX-XXXXX, e.g., "Q46I5-BEAAO-RQA4R-EBQDT")
+# Response Format: JSON
+# Response Fields (success):
+#   - success: true
+#   - data: License object(s) with details including:
+#     * id, ehwid, expiration, status, client_details, product_details, etc.
+#   - match_type: "license_id", "email", or "ehwid"
+# Response Fields (error):
+#   - success: false
+#   - error: Error message
+#   - suggestions: Array of similar licenses (if available)
+# Use Cases:
+#   - Find license details by hardware ID
+#   - Get all licenses for a specific client email
+#   - Retrieve license information by license ID
+# Notes:
+#   - EHWID searches use direct API endpoint for faster results
+#   - Email searches return all matching licenses for that email
+#   - License ID searches return exact match if found
+
+# Search by EHWID (Hardware ID)
+curl -X POST "http://localhost:3000/api/search-license" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "Q46I5-BEAAO-RQA4R-EBQDT"}'
+
+# Search by Email
+curl -X POST "http://localhost:3000/api/search-license" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "9333905@gmail.com"}'
+
+# Search by License ID
+curl -X POST "http://localhost:3000/api/search-license" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "12"}'
+
+# ==========================================
+# 3. Create Invoice
+# ==========================================
+# @mcp
+# Endpoint: POST /api/create-invoice
+# Description: Create a new invoice for a client. Automatically searches for client by email and extracts client_id.
+# Method: POST
+# Authentication: None required (handled internally)
+# Request Parameters:
+#   Required:
+#     - email (string): Client email address (must be valid email format)
+#     - price (number): Invoice price/amount (must be positive number)
+#     - invoice_item (string): Invoice item description/text (e.g., "Monthly subscription", "Service fee")
+#   Optional:
+#     - description (string): Invoice description (default: empty string)
+#     - comments (string): Invoice comments (default: "created by Ai")
+#     - license_id (string|number): Associated license ID (default: null)
+#     - due_on (string): Due date in format "YYYY-MM-DD HH:mm:ss" (default: null)
+# Response Format: JSON
+# Response Fields (success):
+#   - success: true
+#   - message: "Invoice created successfully"
+#   - data:
+#     * client_id: Extracted client ID from email search
+#     * client_email: Client email address
+#     * invoice: Invoice data from API response
+#     * invoice_details: Complete invoice information including items, amounts, etc.
+# Response Fields (error):
+#   - success: false
+#   - error: Error message
+#   - suggestions: Array of similar clients (if client not found)
+# Use Cases:
+#   - Create invoice for a client by email
+#   - Generate invoice with license association
+#   - Create invoice with custom items and pricing
+# Notes:
+#   - Client is automatically searched by email before invoice creation
+#   - If client not found, returns error with suggestions
+#   - Amount is automatically set equal to price
+#   - Total is calculated as amount (no discount applied by default)
+#   - Invoice item structure is automatically created: single item with qty=1 and price from the price parameter
+#   - The invoice_item parameter is just a text description; the system creates the item structure automatically
+
+# Create invoice with all fields
+curl -X POST "http://localhost:3000/api/create-invoice" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "9333905@gmail.com",
+    "description": "this is Description",
+    "comments": "this is Comment",
+    "license_id": "8888",
+    "due_on": "2030-10-10 10:10:10",
+    "invoice_item": "invoice item",
+    "price": 10
+  }'
+
+# Create invoice with minimal required fields
+curl -X POST "http://localhost:3000/api/create-invoice" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "9333905@gmail.com",
+    "invoice_item": "Monthly subscription",
+    "price": 25.50
+  }'
+
+# ==========================================
+# 4. Swap Licenses
+# ==========================================
+# @mcp
+# Endpoint: POST /api/swap-licenses
+# Description: Swap licenses between two different hardware IDs (EHWIDs). Automatically retrieves license IDs from EHWIDs and performs the swap.
+# Method: POST
+# Authentication: None required (handled internally)
+# Request Parameters:
+#   Required:
+#     - old_ehwid (string): Hardware ID of the source license (format: XXXXX-XXXXX-XXXXX-XXXXX)
+#     - new_ehwid (string): Hardware ID of the destination license (format: XXXXX-XXXXX-XXXXX-XXXXX)
+# Response Format: JSON
+# Response Fields (success):
+#   - success: true
+#   - message: "Licenses swapped successfully"
+#   - data:
+#     * old_ehwid: Source hardware ID
+#     * new_ehwid: Destination hardware ID
+#     * old_license_id: Source license ID
+#     * new_license_id: Destination license ID
+#     * old_license_details: Source license information (id, client_email, expiration, status)
+#     * new_license_details: Destination license information (id, client_email, expiration, status)
+#     * swap_response: Response from the swap API
+# Response Fields (error):
+#   - success: false
+#   - error: Error message describing what went wrong
+# Use Cases:
+#   - Transfer license from one hardware to another
+#   - Swap license configurations between devices
+#   - Migrate license to new hardware
+# Notes:
+#   - Both EHWIDs must be in valid format (XXXXX-XXXXX-XXXXX-XXXXX)
+#   - Both licenses must exist in the system
+#   - Cannot swap a license with itself (returns error if same license)
+#   - License IDs are automatically extracted from EHWIDs
+#   - The swap operation is performed on the backend API with encrypted payload
+# Error Scenarios:
+#   - Invalid EHWID format
+#   - License not found for old_ehwid
+#   - License not found for new_ehwid
+#   - Attempting to swap license with itself
+
+# Swap licenses between two EHWIDs
+curl -X POST "http://localhost:3000/api/swap-licenses" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "old_ehwid": "Q46I5-BEAAO-RQA4R-EBQDT",
+    "new_ehwid": "XXXXX-XXXXX-XXXXX-XXXXX"
+  }'
+

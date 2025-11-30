@@ -3,6 +3,7 @@
 const express = require('express');
 const CryptoJS = require('crypto-js');
 const axios = require('axios');
+const moment = require('moment');
 
 const app = express();
 app.use(express.json());
@@ -619,41 +620,18 @@ app.post('/api/create-invoice', async (req, res) => {
     // Calculate total
     const total = amount;
 
-    // Format invoice items as JSON string
-    let itemsJson = '[]';
-    try {
-      // If invoice_item is already a JSON string, parse and validate it
-      if (typeof invoice_item === 'string' && invoice_item.trim().startsWith('[')) {
-        const parsed = JSON.parse(invoice_item);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          itemsJson = JSON.stringify(parsed);
-        } else {
-          // Create item from string
-          itemsJson = JSON.stringify([{
-            text: invoice_item,
-            qty: 1,
-            price: `$${amount.toFixed(2)}`
-          }]);
-        }
-      } else {
-        // Create item from string or object
-        if (typeof invoice_item === 'object' && invoice_item.text) {
-          itemsJson = JSON.stringify([invoice_item]);
-        } else {
-          itemsJson = JSON.stringify([{
-            text: invoice_item.toString(),
-            qty: 1,
-            price: `$${amount.toFixed(2)}`
-          }]);
-        }
-      }
-    } catch (parseError) {
-      // If parsing fails, create a simple item
-      itemsJson = JSON.stringify([{
-        text: invoice_item.toString(),
-        qty: 1,
-        price: `$${amount.toFixed(2)}`
-      }]);
+    // Create invoice item automatically with default structure
+    // invoice_item is a simple string, we create the item structure ourselves
+    const itemsJson = JSON.stringify([{
+      text: invoice_item.toString(),
+      qty: 1,
+      price: `$${amount.toFixed(2)}`
+    }]);
+
+    // Calculate default due_on (next year) if not provided
+    let defaultDueOn = null;
+    if (!due_on) {
+      defaultDueOn = moment().add(1, 'year').endOf('day').format('YYYY-MM-DD HH:mm:ss');
     }
 
     // Prepare invoice data
@@ -662,7 +640,7 @@ app.post('/api/create-invoice', async (req, res) => {
       description: description || '',
       comments: comments || 'created by Ai',
       license_id: license_id || null,
-      due_on: due_on || null,
+      due_on: due_on || defaultDueOn,
       items: itemsJson,
       discount: 0,
       amount: amount,
