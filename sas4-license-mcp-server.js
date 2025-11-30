@@ -185,6 +185,216 @@ async function getLicenseByEHWID(ehwid) {
 }
 
 /**
+ * Search for clients by email
+ */
+async function searchClientByEmail(email) {
+  try {
+    const token = await ensureAuthenticated();
+    
+    const requestData = {
+      page: 1,
+      count: 10,
+      sortBy: 'email',
+      direction: 'asc',
+      search: email,
+      owner: null
+    };
+    
+    const encryptedPayload = encryptPayload(requestData);
+    
+    const response = await axios.post(`${BASE_URL}/client/index`, {
+      payload: encryptedPayload
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.data || !response.data.data) {
+      return {
+        success: false,
+        error: 'No client data returned from API'
+      };
+    }
+    
+    const clients = response.data.data || [];
+    
+    // Find exact email match (case-insensitive)
+    const matchingClient = clients.find(client => 
+      client.email && client.email.toLowerCase() === email.toLowerCase()
+    );
+    
+    if (!matchingClient) {
+      return {
+        success: false,
+        error: `Client not found with email: ${email}`,
+        suggestions: clients.length > 0 ? clients.map(c => ({
+          id: c.id,
+          email: c.email,
+          company: c.company || 'N/A'
+        })) : []
+      };
+    }
+    
+    return {
+      success: true,
+      data: matchingClient,
+      client_id: matchingClient.id
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message
+    };
+  }
+}
+
+/**
+ * Create an invoice
+ */
+async function createInvoice(invoiceData) {
+  try {
+    const token = await ensureAuthenticated();
+    
+    // Prepare invoice payload
+    const invoicePayload = {
+      client_id: invoiceData.client_id,
+      description: invoiceData.description || '',
+      comments: invoiceData.comments || 'created by Ai',
+      license_id: invoiceData.license_id || null,
+      due_on: invoiceData.due_on || null,
+      items: invoiceData.items || '[]',
+      discount: invoiceData.discount || 0,
+      amount: invoiceData.amount,
+      total: invoiceData.total || invoiceData.amount
+    };
+    
+    const encryptedPayload = encryptPayload(invoicePayload);
+    
+    const response = await axios.post(`${BASE_URL}/invoice/create`, {
+      payload: encryptedPayload
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    return {
+      success: true,
+      data: response.data,
+      message: 'Invoice created successfully'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message || 'Failed to create invoice'
+    };
+  }
+}
+
+/**
+ * Swap licenses between two EHWIDs
+ */
+async function swapLicenses(old_ehwid, new_ehwid) {
+  try {
+    // Validate EHWID formats
+    if (!isEHWID(old_ehwid)) {
+      return {
+        success: false,
+        error: `Invalid old_ehwid format: ${old_ehwid}. Expected format: XXXXX-XXXXX-XXXXX-XXXXX`
+      };
+    }
+    
+    if (!isEHWID(new_ehwid)) {
+      return {
+        success: false,
+        error: `Invalid new_ehwid format: ${new_ehwid}. Expected format: XXXXX-XXXXX-XXXXX-XXXXX`
+      };
+    }
+    
+    // Get license details for old EHWID
+    const oldLicenseResult = await getLicenseByEHWID(old_ehwid);
+    if (!oldLicenseResult.success) {
+      return {
+        success: false,
+        error: `Failed to find license for old_ehwid (${old_ehwid}): ${oldLicenseResult.error}`
+      };
+    }
+    
+    const oldLicenseId = oldLicenseResult.data.id;
+    
+    // Get license details for new EHWID
+    const newLicenseResult = await getLicenseByEHWID(new_ehwid);
+    if (!newLicenseResult.success) {
+      return {
+        success: false,
+        error: `Failed to find license for new_ehwid (${new_ehwid}): ${newLicenseResult.error}`
+      };
+    }
+    
+    const newLicenseId = newLicenseResult.data.id;
+    
+    // Check if both licenses are the same
+    if (oldLicenseId === newLicenseId) {
+      return {
+        success: false,
+        error: 'Cannot swap license with itself. Both EHWIDs point to the same license.'
+      };
+    }
+    
+    // Prepare swap payload
+    const swapPayload = {
+      license_id: oldLicenseId,
+      des_license_id: newLicenseId
+    };
+    
+    const token = await ensureAuthenticated();
+    const encryptedPayload = encryptPayload(swapPayload);
+    
+    // Call swap API
+    const response = await axios.post(`${BASE_URL}/licenses/swap`, {
+      payload: encryptedPayload
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    return {
+      success: true,
+      message: 'Licenses swapped successfully',
+      data: {
+        old_ehwid: old_ehwid,
+        new_ehwid: new_ehwid,
+        old_license_id: oldLicenseId,
+        new_license_id: newLicenseId,
+        old_license_details: {
+          id: oldLicenseResult.data.id,
+          client_email: oldLicenseResult.data.client_details?.email || 'N/A',
+          expiration: oldLicenseResult.data.expiration,
+          status: oldLicenseResult.data.status
+        },
+        new_license_details: {
+          id: newLicenseResult.data.id,
+          client_email: newLicenseResult.data.client_details?.email || 'N/A',
+          expiration: newLicenseResult.data.expiration,
+          status: newLicenseResult.data.status
+        },
+        swap_response: response.data
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.message || error.message || 'Failed to swap licenses'
+    };
+  }
+}
+
+/**
  * Search license by keyword
  */
 async function searchLicenseByKeyword(keyword) {
@@ -340,6 +550,228 @@ app.post('/api/search-license', async (req, res) => {
   }
 });
 
+// Create invoice
+app.post('/api/create-invoice', async (req, res) => {
+  try {
+    // Check if req.body exists
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request body. Required fields: email, price, invoice_item. Optional fields: description, license_id, due_on, discount.'
+      });
+    }
+
+    const { email, description, comments, license_id, due_on, invoice_item, price} = req.body;
+
+    // Validate required fields
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: email (client email address)'
+      });
+    }
+
+    if (!isEmail(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid email format'
+      });
+    }
+
+    if (!price) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: price'
+      });
+    }
+
+    if (!invoice_item) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: invoice_item (invoice item text/description)'
+      });
+    }
+
+    // Search for client by email
+    const clientResult = await searchClientByEmail(email);
+    
+    if (!clientResult.success) {
+      return res.status(404).json({
+        success: false,
+        error: clientResult.error,
+        suggestions: clientResult.suggestions || []
+      });
+    }
+
+    const client_id = clientResult.client_id;
+
+    // Parse price to number
+    let amount = parseFloat(price);
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid price value. Price must be a positive number.'
+      });
+    }
+
+
+
+    // Calculate total
+    const total = amount;
+
+    // Format invoice items as JSON string
+    let itemsJson = '[]';
+    try {
+      // If invoice_item is already a JSON string, parse and validate it
+      if (typeof invoice_item === 'string' && invoice_item.trim().startsWith('[')) {
+        const parsed = JSON.parse(invoice_item);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          itemsJson = JSON.stringify(parsed);
+        } else {
+          // Create item from string
+          itemsJson = JSON.stringify([{
+            text: invoice_item,
+            qty: 1,
+            price: `$${amount.toFixed(2)}`
+          }]);
+        }
+      } else {
+        // Create item from string or object
+        if (typeof invoice_item === 'object' && invoice_item.text) {
+          itemsJson = JSON.stringify([invoice_item]);
+        } else {
+          itemsJson = JSON.stringify([{
+            text: invoice_item.toString(),
+            qty: 1,
+            price: `$${amount.toFixed(2)}`
+          }]);
+        }
+      }
+    } catch (parseError) {
+      // If parsing fails, create a simple item
+      itemsJson = JSON.stringify([{
+        text: invoice_item.toString(),
+        qty: 1,
+        price: `$${amount.toFixed(2)}`
+      }]);
+    }
+
+    // Prepare invoice data
+    const invoiceData = {
+      client_id: client_id,
+      description: description || '',
+      comments: comments || 'created by Ai',
+      license_id: license_id || null,
+      due_on: due_on || null,
+      items: itemsJson,
+      discount: 0,
+      amount: amount,
+      total: total
+    };
+
+    // Create the invoice
+    const invoiceResult = await createInvoice(invoiceData);
+
+    if (invoiceResult.success) {
+      res.json({
+        success: true,
+        message: 'Invoice created successfully',
+        data: {
+          client_id: client_id,
+          client_email: email,
+          invoice: invoiceResult.data,
+          invoice_details: {
+            description: invoiceData.description,
+            comments: invoiceData.comments,
+            license_id: invoiceData.license_id,
+            due_on: invoiceData.due_on,
+            items: JSON.parse(itemsJson),
+            discount: 0,
+            amount: amount,
+            total: total
+          }
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: invoiceResult.error
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An unexpected error occurred while creating the invoice'
+    });
+  }
+});
+
+// Swap licenses
+app.post('/api/swap-licenses', async (req, res) => {
+  try {
+    // Check if req.body exists
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request body. Required fields: old_ehwid, new_ehwid'
+      });
+    }
+
+    const { old_ehwid, new_ehwid } = req.body;
+
+    // Validate required fields
+    if (!old_ehwid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: old_ehwid (Hardware ID of the source license)'
+      });
+    }
+
+    if (!new_ehwid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: new_ehwid (Hardware ID of the destination license)'
+      });
+    }
+
+    // Validate EHWID formats
+    if (!isEHWID(old_ehwid)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid old_ehwid format: ${old_ehwid}. Expected format: XXXXX-XXXXX-XXXXX-XXXXX (e.g., Q46I5-BEAAO-RQA4R-EBQDT)`
+      });
+    }
+
+    if (!isEHWID(new_ehwid)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid new_ehwid format: ${new_ehwid}. Expected format: XXXXX-XXXXX-XXXXX-XXXXX (e.g., Q46I5-BEAAO-RQA4R-EBQDT)`
+      });
+    }
+
+    // Swap the licenses
+    const swapResult = await swapLicenses(old_ehwid, new_ehwid);
+
+    if (swapResult.success) {
+      res.json({
+        success: true,
+        message: 'Licenses swapped successfully',
+        data: swapResult.data
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: swapResult.error
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An unexpected error occurred while swapping licenses'
+    });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({
@@ -355,4 +787,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`SAS4 License Search Server running on http://0.0.0.0:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`Search license: POST http://localhost:${PORT}/api/search-license`);
+  console.log(`Create invoice: POST http://localhost:${PORT}/api/create-invoice`);
+  console.log(`Swap licenses: POST http://localhost:${PORT}/api/swap-licenses`);
 });
