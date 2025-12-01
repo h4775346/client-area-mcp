@@ -514,7 +514,7 @@ async function searchLicenseByKeyword(keyword) {
       if (exactMatch) {
         return {
           success: true,
-          data: exactMatch,
+          data: simplifyLicense(exactMatch),
           match_type: 'license_id'
         };
       }
@@ -529,7 +529,7 @@ async function searchLicenseByKeyword(keyword) {
       if (emailMatches.length > 0) {
         return {
           success: true,
-          data: emailMatches,
+          data: emailMatches.map(l => simplifyLicense(l)),
           total: emailMatches.length,
           match_type: 'email'
         };
@@ -543,7 +543,7 @@ async function searchLicenseByKeyword(keyword) {
     if (exactMatch) {
       return {
         success: true,
-        data: exactMatch,
+        data: simplifyLicense(exactMatch),
         match_type: 'ehwid'
       };
     }
