@@ -127,6 +127,77 @@ async function searchLicenses(searchParams) {
 }
 
 /**
+ * Pricing table for SAS4 licenses (USD & IQD) by user tier
+ */
+const PRICING_TABLE = {
+  usd: {
+    100:  { three_months: 43,  six_months: 65,  one_year: 100 },
+    250:  { one_month: 40,  three_months: 55,  six_months: 80,  one_year: 150 },
+    500:  { one_month: 50,  three_months: 80,  six_months: 130, one_year: 250 },
+    1000: { three_months: 130, six_months: 200, one_year: 350 },
+    2000: { three_months: 150, six_months: 300, one_year: 500 },
+    5000: { three_months: 200, six_months: 400, one_year: 750 },
+    10000:{ three_months: 300, six_months: 550, one_year: 1000 },
+    unlimited: { three_months: 400, six_months: 800, one_year: 1500 }
+  },
+  iqd: {
+    100:  { three_months: 60000,  six_months: 93000,  one_year: 143000 },
+    250:  { one_month: 58000,  three_months: 80000,  six_months: 115000, one_year: 215000 },
+    500:  { one_month: 72000,  three_months: 115000, six_months: 186000, one_year: 357000 },
+    1000: { three_months: 182000, six_months: 286000, one_year: 500000 },
+    2000: { three_months: 215000, six_months: 430000, one_year: 714000 },
+    5000: { three_months: 286000, six_months: 572000, one_year: 1072000 },
+    10000:{ three_months: 430000, six_months: 786000, one_year: 1430000 },
+    unlimited: { three_months: 572000, six_months: 1143000, one_year: 2143000 }
+  }
+};
+
+/**
+ * Get pricing tier and values based on max_users
+ */
+function getPricingForMaxUsers(maxUsers) {
+  if (!maxUsers || typeof maxUsers !== 'number') {
+    return null;
+  }
+
+  let tier;
+  if (maxUsers <= 100) tier = 100;
+  else if (maxUsers <= 250) tier = 250;
+  else if (maxUsers <= 500) tier = 500;
+  else if (maxUsers <= 1000) tier = 1000;
+  else if (maxUsers <= 2000) tier = 2000;
+  else if (maxUsers <= 5000) tier = 5000;
+  else if (maxUsers <= 10000) tier = 10000;
+  else tier = 'unlimited';
+
+  return {
+    tier,
+    usd: PRICING_TABLE.usd[tier],
+    iqd: PRICING_TABLE.iqd[tier]
+  };
+}
+
+/**
+ * Simplify license object and merge activation pricing based on max_users
+ */
+function simplifyLicense(license) {
+  if (!license) return null;
+
+  const pricing = getPricingForMaxUsers(license.max_users);
+
+  return {
+    id: license.id,
+    expiration: license.expiration,
+    ip: license.ip,
+    max_users: license.max_users,
+    max_sites: license.max_sites,
+    product_details: license.product_details || null,
+    client_details: license.client_details || null,
+    pricing: pricing
+  };
+}
+
+/**
  * Check if string is an email format
  */
 function isEmail(str) {
@@ -159,9 +230,10 @@ async function getLicenseByEHWID(ehwid) {
     });
     
     if (response.data && response.data.status === 200 && response.data.data) {
+      const simplified = simplifyLicense(response.data.data);
       return {
         success: true,
-        data: response.data.data,
+        data: simplified,
         match_type: 'ehwid'
       };
     }
